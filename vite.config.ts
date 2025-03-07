@@ -6,7 +6,6 @@ import electron from "vite-electron-plugin";
 import { customStart, loadViteEnv } from "vite-electron-plugin/plugin";
 import pkg from "./package.json";
 import legacy from "@vitejs/plugin-legacy";
-import ckeditor5 from "@ckeditor/vite-plugin-ckeditor5";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 // import visualizer from "rollup-plugin-visualizer";
@@ -23,9 +22,15 @@ export default defineConfig(({ command }) => {
         "@": path.join(__dirname, "src"),
       },
     },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          silenceDeprecations: ["legacy-js-api"],
+        },
+      },
+    },
     plugins: [
       react(),
-      ckeditor5({ theme: require.resolve("@ckeditor/ckeditor5-theme-lark") }),
       electron({
         include: ["electron"],
         transformOptions: {
@@ -73,15 +78,6 @@ export default defineConfig(({ command }) => {
       },
       rollupOptions: {
         output: {
-          // manualChunks(id) {
-          //   if (
-          //     id.includes("node_modules") &&
-          //     !id.includes("rc") &&
-          //     !id.includes("ant")
-          //   ) {
-          //     return id.toString().split("node_modules/")[1].split("/")[0].toString();
-          //   }
-          // },
         },
       },
     },

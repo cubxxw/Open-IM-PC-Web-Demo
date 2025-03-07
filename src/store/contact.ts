@@ -3,7 +3,6 @@ import {
   BlackUserItem,
   FriendApplicationItem,
   FriendUserItem,
-  FullUserItem,
   GroupApplicationItem,
   GroupItem,
 } from "@openim/wasm-client-sdk/lib/types/entity";
@@ -12,6 +11,10 @@ import { create } from "zustand";
 
 import { IMSDK } from "@/layout/MainContentWrap";
 import { feedbackToast } from "@/utils/common";
+import {
+  getAccessedFriendApplication,
+  getAccessedGroupApplication,
+} from "@/utils/storage";
 
 import { ContactStore } from "./type";
 
@@ -28,20 +31,23 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
   getFriendListByReq: async () => {
     try {
       let offset = 0;
-      let tmpList = [] as FullUserItem[];
+      let tmpList = [] as FriendUserItem[];
       let initialFetch = true;
       // eslint-disable-next-line
       while (true) {
         const count = initialFetch ? 10000 : 1000;
-        const { data } = await IMSDK.getFriendListPage({ offset, count });
+        const { data } = await IMSDK.getFriendListPage({
+          offset,
+          count,
+          filterBlack: true,
+        });
         tmpList = [...tmpList, ...data];
         offset += count;
         if (data.length < count) break;
         initialFetch = false;
       }
-      // const { data } = await IMSDK.getFriendList();
       set(() => ({
-        friendList: tmpList.map((item) => item.friendInfo!),
+        friendList: [...tmpList],
       }));
     } catch (error) {
       feedbackToast({ error, msg: t("toast.getFriendListFailed") });
@@ -88,7 +94,13 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
     set(() => ({ blackList: tmpList }));
   },
   pushNewBlack: (black: BlackUserItem) => {
-    set((state) => ({ blackList: [...state.blackList, black] }));
+    const isFriend = get().friendList.find((f) => f.userID === black.userID);
+    set((state) => ({
+      blackList: [...state.blackList, black],
+      friendList: !isFriend
+        ? state.friendList
+        : state.friendList.filter((f) => f.userID !== black.userID),
+    }));
   },
   getGroupListByReq: async () => {
     try {
@@ -130,15 +142,12 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
   getRecvFriendApplicationListByReq: async () => {
     try {
       const { data } = await IMSDK.getFriendApplicationListAsRecipient();
-      const unHandleFriendApplicationCount = data.filter(
-        (application) => application.handleResult === 0,
-      ).length;
-      set(() => ({ recvFriendApplicationList: data, unHandleFriendApplicationCount }));
+      set(() => ({ recvFriendApplicationList: data }));
     } catch (error) {
       console.error(error);
     }
   },
-  updateRecvFriendApplication: (application: FriendApplicationItem) => {
+  updateRecvFriendApplication: async (application: FriendApplicationItem) => {
     let tmpList = [...get().recvFriendApplicationList];
     let isHandleResultUpdate = false;
     const idx = tmpList.findIndex((a) => a.fromUserID === application.fromUserID);
@@ -149,8 +158,13 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
       tmpList[idx] = { ...application };
     }
     if (idx < 0 || isHandleResultUpdate) {
+      const accessedFriendApplications = await getAccessedFriendApplication();
       const unHandleFriendApplicationCount = tmpList.filter(
-        (application) => application.handleResult === 0,
+        (application) =>
+          application.handleResult === 0 &&
+          !accessedFriendApplications.includes(
+            `${application.fromUserID}_${application.createTime}`,
+          ),
       ).length;
       set(() => ({
         recvFriendApplicationList: tmpList,
@@ -181,15 +195,12 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
   getRecvGroupApplicationListByReq: async () => {
     try {
       const { data } = await IMSDK.getGroupApplicationListAsRecipient();
-      const unHandleGroupApplicationCount = data.filter(
-        (application) => application.handleResult === 0,
-      ).length;
-      set(() => ({ recvGroupApplicationList: data, unHandleGroupApplicationCount }));
+      set(() => ({ recvGroupApplicationList: data }));
     } catch (error) {
       console.error(error);
     }
   },
-  updateRecvGroupApplication: (application: GroupApplicationItem) => {
+  updateRecvGroupApplication: async (application: GroupApplicationItem) => {
     let tmpList = [...get().recvGroupApplicationList];
     let isHandleResultUpdate = false;
     const idx = tmpList.findIndex((a) => a.userID === application.userID);
@@ -200,8 +211,13 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
       tmpList[idx] = { ...application };
     }
     if (idx < 0 || application.handleResult === ApplicationHandleResult.Unprocessed) {
+      const accessedGroupApplications = await getAccessedGroupApplication();
       const unHandleGroupApplicationCount = tmpList.filter(
-        (application) => application.handleResult === 0,
+        (application) =>
+          application.handleResult === 0 &&
+          !accessedGroupApplications.includes(
+            `${application.userID}_${application.reqTime}`,
+          ),
       ).length;
       set(() => ({ recvGroupApplicationList: tmpList, unHandleGroupApplicationCount }));
       return;
